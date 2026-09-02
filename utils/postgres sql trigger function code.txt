@@ -1,0 +1,37 @@
+CREATE TRIGGER update_login_count
+AFTER UPDATE OF last_login_at ON users
+FOR EACH ROW 
+EXECUTE PROCEDURE login_logger();
+
+CREATE OR REPLACE FUNCTION login_logger() 
+RETURNS TRIGGER AS $login_logger$
+DECLARE 
+today_date date;
+total_count integer;
+BEGIN
+	select date,count from analytics into today_date,total_count where to_char(date,'YYYY-MM-DD') = CAST(CURRENT_DATE as VARCHAR);
+	if not found then
+	INSERT INTO analytics(`date`,`action`,`count`) VALUES (CURRENT_DATE,'LOGGED_IN',1)
+	else
+	UPDATE analytics SET count=total_count+1 where date = today_date;
+	end if;
+END;
+$login_logger$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION login_logger() 
+RETURNS TRIGGER AS $login_logger$
+DECLARE 
+today_date date;
+total_count integer;
+BEGIN
+	select date,count from analytics into today_date,total_count where to_char(date,'YYYY-MM-DD') = CAST(CURRENT_DATE as VARCHAR);
+	if not found then
+	INSERT INTO analytics(date,action,count) VALUES (CURRENT_DATE,'LOGGED_IN',1);
+	else
+	UPDATE analytics SET count=total_count+1 where date = today_date;
+	end if;
+	RETURN NULL;
+END;
+$login_logger$ LANGUAGE plpgsql;
+
