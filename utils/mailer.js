@@ -2,6 +2,11 @@ var nodemailer = require('nodemailer');
 const OrderDetail = require('./../productModels/OrderDetail.model');
 const Product = require('./../productModels/Product.model');
 const moment = require('moment');
+const path = require('path');
+
+// Sender must be an address the SMTP account is allowed to send as (SPF).
+const MAIL_FROM =
+  process.env.EMAIL_FROM || `"AsiaPharm SG Admin" <${process.env.EMAIL_ADDR}>`;
 /*
 const {google } = require('googleapis');
 
@@ -37,7 +42,7 @@ var transporter = nodemailer.createTransport({
 
 const sendMail = async (email) => {
   const mailOptions = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: email,
     subject: 'Pending account activation - AsiaPharmSG',
     text: 'That was easy! Our team is currently reviewing your application. Thank you!'
@@ -54,7 +59,7 @@ const sendMail = async (email) => {
 
 const sendResetMail = async (user, hasedResetString, redirectUrl) => {
   const mailOptionsForReset = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: user.email,
     subject: 'Password Reset',
     html: `<p>We have heard that you lost the password.</p><p>Don't worry, use the link below to reset it.</p>
@@ -74,7 +79,7 @@ const sendResetMail = async (user, hasedResetString, redirectUrl) => {
 
 const sendTempPasswordMail = async (email, password) => {
   const mailOptionsForReset = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: email,
     subject: 'AsiaPharm Platform Account Password Reset',
     html: `<p>We have heard that you lost the password.</p><p>Don't worry, we have generate a temporary password.
@@ -93,7 +98,7 @@ const sendTempPasswordMail = async (email, password) => {
 //Send Email when account is active
 const sendAccountUpdateSuccessMail = async (email) => {
   const mailOptionsForUpdateSuccess = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: email,
     subject: 'Your Account Registration is successful',
     html: `<p>Your Account has been activated.</p>`
@@ -110,7 +115,7 @@ const sendAccountUpdateSuccessMail = async (email) => {
 //Send Email when account is rejected
 const sendAccountUpdateUnsuccessMail = async (email) => {
   const mailOptionsForUpdateUnsuccess = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: email,
     subject: 'Your Account Registration is unsuccessful',
     html: `<p>We regret to inform you that your application has been rejected. Please contact our admin for verification. </p>`
@@ -127,7 +132,7 @@ const sendAccountUpdateUnsuccessMail = async (email) => {
 //Send Email when order is created
 const sendNewOrderMail = async (email) => {
   const mailOptionsForNewOrder = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: email,
     subject: 'An order has been created',
     html: `<p>The order has been created and is in pending status. Please check your account to view the order. </p>`
@@ -175,7 +180,7 @@ const sendApproveOrderMail = async (user, order) => {
   message += '<h3> Thank you for placing your order. </h3>';
 
   const mailOptionsForRejectOrder = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: user.email,
     subject: `Your order [${order_id}] has been approved`,
     html: message
@@ -222,7 +227,7 @@ const sendRejectOrderMail = async (user, order) => {
   message += '<h3> Please place your order with us again. Thank you. </h3>';
 
   const mailOptionsForRejectOrder = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: user.email,
     subject: `Your order [${order_id}] has at least one order item been rejected`,
     html: message
@@ -323,13 +328,13 @@ const sendNewOrderMailTemplate = async (user, newOrder, orderDetails_list) => {
   message += '<h3> Thank you for placing your order. </h3>';
 
   const mailOptionsForNewOrder = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: user.email,
     subject: `An order has been created[${order_id}]`,
     attachments: [
       {
         filename: 'AsisPharmLogo.jpeg',
-        path: '/var/www/html/api-app-backend/utils/AsisPharmLogo.jpeg',
+        path: path.join(__dirname, 'AsisPharmLogo.jpeg'),
         cid: 'unique@cid'
       }
     ],
@@ -435,7 +440,7 @@ const sendNewOrderMailVendor = async (vendor, newOrder, orderDetails_list) => {
   message += '<h3> Thank you for placing your order. </h3>';
 
   const mailOptionsForNewOrder = {
-    from: '"AsiaPharm SG Admin" <no-reply@engiselle.com>',
+    from: MAIL_FROM,
     to: vendor.email,
     subject: `You got an order[${order_id}]`,
     html: message
