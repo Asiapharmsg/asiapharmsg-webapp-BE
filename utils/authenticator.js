@@ -1,7 +1,7 @@
 const { default: axios } = require("axios");
 const dotenv = require("dotenv");
 const jwt = require("jsonwebtoken");
-const secretKey = process.env.JWT_SECRET_KEY || "eCom-demo-lezada";
+const secretKey = process.env.JWT_SECRET_KEY;
 const captchaKey = process.env.CAPTCHA_KEY;
 
 

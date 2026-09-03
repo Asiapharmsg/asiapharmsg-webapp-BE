@@ -252,7 +252,7 @@ const login = async (req, res) => {
     if (!passwordMatched) {
       return res.status(422).send({ error: 'Password incorrect' });
     }
-    const secretKey = process.env.JWT_SECRET_KEY || 'eCom-demo-lezada';
+    const secretKey = process.env.JWT_SECRET_KEY;
     const token = jwt.sign(
       {
         userId: userExists.id,

@@ -1,4 +1,32 @@
 require('dotenv').config();
+
+// Fail fast on missing configuration rather than running with insecure or
+// broken defaults (a public fallback JWT secret, uploads with no bucket).
+const REQUIRED_ENV = [
+  'JWT_SECRET_KEY',
+  'CAPTCHA_KEY',
+  'DB_HOST',
+  'DB_USERNAME',
+  'DB_PASSWORD',
+  'DB_NAME',
+  'AWS_REGION',
+  'AWS_BUCKET_NAME'
+];
+const missingEnv = REQUIRED_ENV.filter((k) => !process.env[k]);
+if (missingEnv.length) {
+  console.error(`Missing required environment variables: ${missingEnv.join(', ')}`);
+  process.exit(1);
+}
+
+// Log instead of dying silently; Docker's restart policy handles real crashes.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception, exiting:', err);
+  process.exit(1);
+});
+
 const path = require('path');
 const express = require('express');
 const logger = require('morgan');
