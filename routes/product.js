@@ -3,6 +3,22 @@ const router = express.Router();
 const Product = require('./../productModels/Product.model');
 const Sequelize = require('sequelize');
 const { imageUpload, multiImageUpload } = require('../aws/upload');
+const { requireAdmin } = require('../utils/authenticator');
+
+// Vendors may only change their own products; admins may change any.
+const ownerOrAdmin = async (req, res, next) => {
+  try {
+    if (req.isAdmin) return next();
+    const product = await Product.findByPk(req.params.pid);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (String(product.supplier_id) !== String(req.userId)) {
+      return res.status(403).json({ error: 'Not your product' });
+    }
+    return next();
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
 
 router.get('/', async (req, res) => {
   try {
@@ -174,7 +190,7 @@ router.get('/supplier/:sid', async (req, res) => {
   }
 });
 
-router.get('/pending', async (req, res) => {
+router.get('/pending', requireAdmin, async (req, res) => {
   try {
     const { pid } = req.params;
     let product = await Product.findAll({ where: { status: 2 } });
@@ -194,6 +210,7 @@ router.post('/', async (req, res) => {
           return res.json('Error: No File Selected');
         } else {
           const filesArray = req.files;
+          if (!req.isAdmin) req.body.supplier_id = req.userId;
           // return res.json(filesArray);
           // const imageLocation = req.file.location;
           const {
@@ -246,7 +263,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.patch('/:pid', async (req, res) => {
+router.patch('/:pid', ownerOrAdmin, async (req, res) => {
   const { pid } = req.params;
 
   multiImageUpload(req, res, async (error) => {
@@ -359,7 +376,7 @@ router.patch('/:pid', async (req, res) => {
   });
 });
 
-router.delete('/:pid', async (req, res) => {
+router.delete('/:pid', ownerOrAdmin, async (req, res) => {
   try {
     const { pid } = req.params;
     const deletedProductId = await Product.destroy({

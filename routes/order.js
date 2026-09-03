@@ -8,8 +8,9 @@ const mailer = require('../utils/mailer');
 const validate = require("../utils/validator");
 const { body } = require('express-validator');
 const User = require('../productModels/User.model');
+const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
 
-router.get('/', async (req, res) => {
+router.get('/', requireAdmin, async (req, res) => {
   try {
     let rows = await Order.findAll({
       include: [
@@ -29,6 +30,8 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
+  // A clinic can only place orders for itself.
+  if (!req.isAdmin) req.body.user_id = req.userId;
   const isValid = await validate.run(req, res, [
     body('user_id')
       .exists()
@@ -112,16 +115,16 @@ router.post('/', async (req, res) => {
       //send email to user
       console.log('send email here');
       const userData = await User.findByPk(user_id);
-      mailer.sendNewOrderMailTemplate(userData, newOrder, orderDetails_list);
+      Promise.resolve(
+        mailer.sendNewOrderMailTemplate(userData, newOrder, orderDetails_list)
+      ).catch((e) => console.error('Order email to clinic failed:', e.message));
 
       //send email to supplier list
       for (const x in supplier_list) {
         const supplierData = await User.findByPk(supplier_list[x]);
-        mailer.sendNewOrderMailVendor(
-          supplierData,
-          newOrder,
-          orderDetails_list
-        );
+        Promise.resolve(
+          mailer.sendNewOrderMailVendor(supplierData, newOrder, orderDetails_list)
+        ).catch((e) => console.error('Order email to vendor failed:', e.message));
       }
 
       return res.json({ newOrder });
@@ -134,7 +137,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.delete('/:oid', async (req, res) => {
+router.delete('/:oid', requireAdmin, async (req, res) => {
   try {
     const { oid } = req.params;
     const deletedOrderId = await Order.destroy({
@@ -159,7 +162,7 @@ router.delete('/:oid', async (req, res) => {
   }
 });
 
-router.get('/supplier/:sid', async (req, res) => {
+router.get('/supplier/:sid', selfOrAdmin('sid'), async (req, res) => {
   const { sid } = req.params;
   try {
     let rows = await Order.findAll({
@@ -174,7 +177,7 @@ router.get('/supplier/:sid', async (req, res) => {
   }
 });
 
-router.get('/user/:uid', async (req, res) => {
+router.get('/user/:uid', selfOrAdmin('uid'), async (req, res) => {
   const { uid } = req.params;
   try {
     let rows = await Order.findAll({
@@ -201,7 +204,7 @@ router.get('/orderdelivery/:oid', async (req, res) => {
   }
 });
 
-router.patch('/:oid', async (req, res) => {
+router.patch('/:oid', requireAdmin, async (req, res) => {
   const { status, total_price } = req.body;
   console.log('here');
   console.log(total_price);

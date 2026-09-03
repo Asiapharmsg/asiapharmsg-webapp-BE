@@ -8,8 +8,9 @@ const User = require('./../productModels/User.model');
 const mailer = require('../utils/mailer');
 const oldUser = require('../models').User;
 const helpers = require('../utils/helpers');
+const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
 
-router.get('/', async (req, res) => {
+router.get('/', requireAdmin, async (req, res) => {
   try {
     let rows = await OrderDetail.findAll();
     res.json(rows);
@@ -19,7 +20,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/supplier/:sId', async (req, res) => {
+router.get('/supplier/:sId', selfOrAdmin('sId'), async (req, res) => {
   const { sId } = req.params;
   try {
     console.log('here');
@@ -53,7 +54,7 @@ router.get('/supplier/:sId', async (req, res) => {
   }
 });
 
-router.get('/user/:uid', async (req, res) => {
+router.get('/user/:uid', selfOrAdmin('uid'), async (req, res) => {
   const { uid } = req.params;
   console.log('HELLO');
   try {
@@ -143,6 +144,10 @@ router.patch('/:odid', async (req, res) => {
   try {
     const { odid } = req.params;
     const orderDetail = await OrderDetail.findByPk(odid);
+    if (!orderDetail) return res.status(404).json({ error: 'Order line not found' });
+    if (!req.isAdmin && String(orderDetail.supplier_id) !== String(req.userId)) {
+      return res.status(403).json({ error: 'Not your order line' });
+    }
     const order_id = orderDetail.order_id;
     const order_obj = await Order.findByPk(order_id);
     const clinic = await User.findByPk(order_obj.user_id);

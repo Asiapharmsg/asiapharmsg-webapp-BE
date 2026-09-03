@@ -38,6 +38,7 @@ const db = require('./database/connection');
 // var busboyBodyParser = require('busboy-body-parser');
 const analyticsRouter = require('./routes/analytics');
 const authRouter = require('./routes/auth');
+const { authenticate } = require('./utils/authenticator');
 
 // Set up the express app
 const app = express();
@@ -72,12 +73,12 @@ db.authenticate()
     console.error('Unable to connect to the database:', error);
   });
 
-app.use('/api/products', require('./routes/product'));
-app.use('/api/products/wishlist', require('./routes/wishlist'));
-app.use('/api/category', require('./routes/category'));
-app.use('/api/orders', require('./routes/order'));
-app.use('/api/orderdetails', require('./routes/orderDetails'));
-app.use('/api/billings', require('./routes/billing'));
+app.use('/api/products', authenticate, require('./routes/product'));
+app.use('/api/products/wishlist', authenticate, require('./routes/wishlist'));
+app.use('/api/category', authenticate, require('./routes/category'));
+app.use('/api/orders', authenticate, require('./routes/order'));
+app.use('/api/orderdetails', authenticate, require('./routes/orderDetails'));
+app.use('/api/billings', authenticate, require('./routes/billing'));
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}.`);

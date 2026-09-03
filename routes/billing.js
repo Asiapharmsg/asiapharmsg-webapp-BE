@@ -3,8 +3,9 @@ const router = express.Router();
 const Billing = require('./../productModels/Billing.model');
 //const OrderDetail = require('./../models/OrderDetail.model');
 const User = require('./../productModels/User.model');
+const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
 
-router.get('/', async (req, res) => {
+router.get('/', requireAdmin, async (req, res) => {
   try {
     let rows = await Billing.findAll({
       include: [
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
 });
 
 // To do: add to order status update to approve
-router.post('/', async (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   const { order_id, billing_price, status } = req.body;
   try {
     const newBilling = await Billing.create({
@@ -42,7 +43,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.get('/supplier/:sid', async (req, res) => {
+router.get('/supplier/:sid', selfOrAdmin('sid'), async (req, res) => {
   const { sid } = req.params;
   try {
     let rows = await Billing.findAll({ where: { supplier_id: sid } });
@@ -53,7 +54,7 @@ router.get('/supplier/:sid', async (req, res) => {
   }
 });
 
-router.patch('/:bid', async (req, res) => {
+router.patch('/:bid', requireAdmin, async (req, res) => {
   const { status } = req.body;
   try {
     const { bid } = req.params;

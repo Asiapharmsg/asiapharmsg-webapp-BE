@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Category = require('./../productModels/Category.model');
+const { requireAdmin } = require('../utils/authenticator');
 
 router.get('/', async (req, res) => {
   try {
@@ -12,7 +13,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   const { name, description } = req.body;
   try {
     await Category.create({ name: name, description: description });
@@ -23,7 +24,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.delete('/:cid', async (req, res) => {
+router.delete('/:cid', requireAdmin, async (req, res) => {
   try {
     const { cid } = req.params;
     const deletedCategoryId = await Category.destroy({
