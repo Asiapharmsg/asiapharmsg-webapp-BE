@@ -41,7 +41,11 @@ const selfOrAdmin = (param) => (req, res, next) => {
   return res.status(403).send({ error: 'Not allowed for this account' });
 };
 
-const verifyCaptcha = async (req, res, next) => {
+// reCAPTCHA v3: verifies the token, then checks that it was issued for the
+// expected action and that Google's score clears the threshold.
+const CAPTCHA_MIN_SCORE = Number(process.env.CAPTCHA_MIN_SCORE || 0.5);
+
+const verifyCaptcha = (expectedAction) => async (req, res, next) => {
   const token = req.params.token;
   if (!token) {
     return res.status(400).send({ error: 'Captcha token missing' });
@@ -52,10 +56,22 @@ const verifyCaptcha = async (req, res, next) => {
       params: { secret: captchaKey, response: token },
       timeout: 10000
     });
-    if (resp.data && resp.data.success) {
-      return next();
+    const data = resp.data || {};
+    if (!data.success) {
+      console.warn('Captcha rejected:', data['error-codes']);
+      return res.status(400).send({ error: 'Captcha verification failed' });
     }
-    return res.status(400).send({ error: 'Captcha verification failed' });
+    if (expectedAction && data.action && data.action !== expectedAction) {
+      console.warn(`Captcha action mismatch: got ${data.action}, expected ${expectedAction}`);
+      return res.status(400).send({ error: 'Captcha verification failed' });
+    }
+    if (typeof data.score === 'number' && data.score < CAPTCHA_MIN_SCORE) {
+      console.warn(`Captcha score too low: ${data.score} for ${expectedAction}`);
+      return res
+        .status(400)
+        .send({ error: 'Request looked automated, please try again' });
+    }
+    return next();
   } catch (err) {
     console.error('Captcha verification request failed:', err.message);
     return res

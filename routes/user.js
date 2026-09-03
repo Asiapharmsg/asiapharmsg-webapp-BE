@@ -16,7 +16,7 @@ const cpUpload = upload.fields([
   { name: 'smc', maxCount: 1 },
   { name: 'acra', maxCount: 1 }
 ]);
-router.post('/signup/:token', cpUpload, verifyCaptcha, userController.signup);
+router.post('/signup/:token', cpUpload, verifyCaptcha('signup'), userController.signup);
 //signle imag sign up
 /*
 router.post(
@@ -26,7 +26,7 @@ router.post(
   userController.signup
 );*/
 
-router.post('/login/:token', verifyCaptcha, userController.login);
+router.post('/login/:token', verifyCaptcha('login'), userController.login);
 router.post('/forgetpassword', userController.forgetpassword);
 //router.post("/resetpassword", userController.resetpassword);
 
