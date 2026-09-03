@@ -119,7 +119,6 @@ dist
 
 # database sql dump
 database/sql_dump/*
-=======
 node_modules
 .env.*
 .env
