@@ -6,7 +6,7 @@ const verifyAuth = (req, res) => {
     const auth = req.headers.authorization;
     const token = auth !== undefined ? auth.split(" ")[1] : undefined;
     if (!auth || auth.split(" ")[0] !== "Bearer" || token === "") {
-      res
+      return res
         .status(200)
         .send({ authenticated: false, error: "Auth token not found" });
     }

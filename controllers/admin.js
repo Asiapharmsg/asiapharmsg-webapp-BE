@@ -103,8 +103,8 @@ const getAdminUsersPaging = async (req, res) => {
       adminControlValues
     });
   } catch (err) {
-    console.log(error);
-    return res.status(500).send({ error: error.message });
+    console.log(err);
+    return res.status(500).send({ error: err.message });
   }
 };
 

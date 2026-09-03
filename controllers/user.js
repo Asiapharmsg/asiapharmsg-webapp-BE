@@ -96,10 +96,15 @@ const userData = async (req, res) => {
   try {
     const userId = req.params.id || req.userId;
     if (!userId) {
-      return res.status(500).send({ error: 'Unauthorized request' });
+      return res.status(401).send({ error: 'Unauthorized request' });
+    }
+    // Only admins may look up other accounts.
+    if (req.params.id && !req.isAdmin && String(req.params.id) !== String(req.userId)) {
+      return res.status(403).send({ error: 'Not allowed for this account' });
     }
     const userData = await User.findByPk(userId, { raw: true });
     if (userData) {
+      delete userData.password;
       return res.status(200).send({ data: userData });
     } else {
       return res.status(200).send({ error: 'User account not found' });
@@ -114,11 +119,15 @@ const userDataWOimg = async (req, res) => {
   try {
     const userId = req.params.id || req.userId;
     if (!userId) {
-      return res.status(500).send({ error: 'Unauthorized request' });
+      return res.status(401).send({ error: 'Unauthorized request' });
+    }
+    // Only admins may look up other accounts.
+    if (req.params.id && !req.isAdmin && String(req.params.id) !== String(req.userId)) {
+      return res.status(403).send({ error: 'Not allowed for this account' });
     }
     const userData = await User.findByPk(userId, { raw: true });
     if (userData) {
-      console.log(userData);
+      delete userData.password;
       delete userData.image_acra;
       delete userData.image_moh;
       delete userData.image_smc;
@@ -144,7 +153,6 @@ const signup = async (req, res) => {
       return;
     }
     const data = req.body;
-    console.log('the sign in data', data);
     const moh = req.files['moh'][0];
     const smc = req.files['smc'][0];
     const acra = req.files['acra'][0];
@@ -245,9 +253,6 @@ const login = async (req, res) => {
     if (!userExists) {
       return res.status(404).send({ error: 'username or email not found' });
     }
-    console.log(userExists.password);
-    const hashPassword = await bcrypt.hash(password, 12);
-    console.log(hashPassword);
     const passwordMatched = await bcrypt.compare(password, userExists.password);
     if (!passwordMatched) {
       return res.status(422).send({ error: 'Password incorrect' });
@@ -562,66 +567,71 @@ const deleteUser = async (req, res) => {
 };
 
 const updatePassword = async (req, res) => {
-  const isValid = await validate.run(req, res, [
-    body('currentPassword')
-      .trim()
-      .exists()
-      .notEmpty()
-      .matches(validPasswordRegex)
-      .withMessage(
-        'Current Password must be minimum eight characters, at least one letter, one number and one special character'
-      ),
-    body('newPassword')
-      .trim()
-      .exists()
-      .notEmpty()
-      .matches(validPasswordRegex)
-      .withMessage(
-        'New Password must be minimum eight characters, at least one letter, one number and one special character'
-      )
-  ]);
-  if (!isValid) {
-    console.log('not valid', isValid);
-    return;
-  }
-
-  const userId = req.userId;
-  if (!userId) {
-    return res.status(500).send({ error: 'Unauthorized request' });
-  }
-  const userExists = await User.findByPk(userId, { raw: true });
-  if (!userExists) {
-    return res.status(404).send({ error: 'User account not found' });
-  }
-
-  const { currentPassword, newPassword } = req.body;
-  if (currentPassword === newPassword) {
-    return res
-      .status(500)
-      .send({ error: 'Cannot use previous password again' });
-  }
-  const passwordMatched = await bcrypt.compare(
-    currentPassword,
-    userExists.password
-  );
-  if (!passwordMatched) {
-    return res.status(422).send({ error: 'Password incorrect' });
-  }
-  const hashPassword = await bcrypt.hash(newPassword, 12);
-  const updatedUser = await User.update(
-    {
-      password: hashPassword
-    },
-    {
-      where: {
-        id: userId
-      }
+  try {
+    const isValid = await validate.run(req, res, [
+      body('currentPassword')
+        .trim()
+        .exists()
+        .notEmpty()
+        .matches(validPasswordRegex)
+        .withMessage(
+          'Current Password must be minimum eight characters, at least one letter, one number and one special character'
+        ),
+      body('newPassword')
+        .trim()
+        .exists()
+        .notEmpty()
+        .matches(validPasswordRegex)
+        .withMessage(
+          'New Password must be minimum eight characters, at least one letter, one number and one special character'
+        )
+    ]);
+    if (!isValid) {
+      console.log('not valid', isValid);
+      return;
     }
-  );
-  return res.status(200).send({
-    message: 'Account updated successfully',
-    user: updatedUser
-  });
+
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(500).send({ error: 'Unauthorized request' });
+    }
+    const userExists = await User.findByPk(userId, { raw: true });
+    if (!userExists) {
+      return res.status(404).send({ error: 'User account not found' });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    if (currentPassword === newPassword) {
+      return res
+        .status(500)
+        .send({ error: 'Cannot use previous password again' });
+    }
+    const passwordMatched = await bcrypt.compare(
+      currentPassword,
+      userExists.password
+    );
+    if (!passwordMatched) {
+      return res.status(422).send({ error: 'Password incorrect' });
+    }
+    const hashPassword = await bcrypt.hash(newPassword, 12);
+    const updatedUser = await User.update(
+      {
+        password: hashPassword
+      },
+      {
+        where: {
+          id: userId
+        }
+      }
+    );
+    return res.status(200).send({
+      message: 'Account updated successfully',
+      user: updatedUser
+    });
+  } catch (err) {
+    console.error('updatePassword failed:', err);
+    return res.status(500).send({ error: err.message });
+  }
 };
 
 module.exports = {
