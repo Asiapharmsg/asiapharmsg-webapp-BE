@@ -1,3 +1,21 @@
+# Reference copy of the host Caddyfile for the EC2 box: /etc/caddy/Caddyfile
+# Caddy runs natively (systemd unit "caddy"), not in Docker. After editing:
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Certificates are issued automatically via Let's Encrypt once each hostname's
+# DNS A record points at this server and ports 80/443 are open.
+
 api.asiapharmsg.com {
-	reverse_proxy app:8000
+    reverse_proxy 127.0.0.1:8000
+    encode gzip
+}
+
+asiapharmsg.com, www.asiapharmsg.com {
+    reverse_proxy 127.0.0.1:3000
+    encode gzip
+}
+
+db.asiapharmsg.com {
+    reverse_proxy 127.0.0.1:5050
 }

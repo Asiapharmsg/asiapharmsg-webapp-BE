@@ -1,59 +1,22 @@
-version: "3.7"
-
 services:
   app:
     build: .
-    expose:
-      - "8000"
+    image: ap-backend:latest
+    restart: unless-stopped
     env_file:
       - .env
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USERNAME: admin
-      DB_PASSWORD: admin
-      DB_NAME: ap_development
-    depends_on:
-      - db
-    networks:
-      - ap_net
-
-  caddy:
-    image: caddy:2-alpine
+      NODE_ENV: production
+      PORT: 8000
+    # Bound to localhost only; the host's Caddy reverse-proxies
+    # api.asiapharmsg.com to 127.0.0.1:8000 (see caddy/Caddyfile).
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - app
-    networks:
-      - ap_net
+      - "127.0.0.1:8000:8000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  db:
-    image: "postgres:13.7-alpine"
-    volumes:
-      - "ap_psql_data:/var/lib/postgresql/data"
-    networks:
-      - ap_net
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: ap_development
-    ports:
-      - "5432:5432"
-
-volumes:
-  ap_psql_data:
-    driver: local
-  caddy_data:
-    driver: local
-  caddy_config:
-    driver: local
-
-networks:
-  ap_net:
-    name: ap_net
-    driver: bridge
+# The database is Amazon RDS (see DB_* in .env) and the reverse proxy is the
+# Caddy service installed on the host, so neither runs in this compose file.
