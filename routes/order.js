@@ -8,6 +8,7 @@ const mailer = require('../utils/mailer');
 const validate = require("../utils/validator");
 const { body } = require('express-validator');
 const User = require('../productModels/User.model');
+const db = require('../database/connection');
 const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
 
 router.get('/', requireAdmin, async (req, res) => {
@@ -85,56 +86,96 @@ router.post('/', async (req, res) => {
     contact,
     orderDetails_list
   } = req.body;
-  const sent = 0;
-  console.log('create new order', user_id);
+
+  // orderDetails_list arrives as a JSON string of {product_id, supplier_id,
+  // quantity, price} lines.
+  let orderLines;
   try {
-    const newOrder = await Order.create({
-      user_id,
-      total_price,
-      status,
-      sent
-    });
-    if (newOrder.id) {
-      console.log('new order id ', newOrder.id);
-
-      // Create new record in orderdelivery table
-      const newOrderDelivery = await OrderDelivery.create({
-        order_id: newOrder.id,
-        first_name: firstName,
-        last_name: lastName,
-        delivery_address: deliveryAddress,
-        delivery_type: deliveryType,
-        contact,
-        remarks
-      });
-
-      console.log('new order delivery id ', newOrderDelivery.id);
-
-      if (!newOrderDelivery.id) throw 'Error creating order';
-
-      //send email to user
-      console.log('send email here');
-      const userData = await User.findByPk(user_id);
-      Promise.resolve(
-        mailer.sendNewOrderMailTemplate(userData, newOrder, orderDetails_list)
-      ).catch((e) => console.error('Order email to clinic failed:', e.message));
-
-      //send email to supplier list
-      for (const x in supplier_list) {
-        const supplierData = await User.findByPk(supplier_list[x]);
-        Promise.resolve(
-          mailer.sendNewOrderMailVendor(supplierData, newOrder, orderDetails_list)
-        ).catch((e) => console.error('Order email to vendor failed:', e.message));
-      }
-
-      return res.json({ newOrder });
-    } else {
-      return res.json({ error: true, message: 'Error creating order' });
-    }
-  } catch (error) {
-    console.log(error.message);
-    return res.json(error);
+    orderLines =
+      typeof orderDetails_list === 'string'
+        ? JSON.parse(orderDetails_list)
+        : orderDetails_list;
+  } catch (e) {
+    orderLines = null;
   }
+  if (!Array.isArray(orderLines) || orderLines.length === 0) {
+    return res.status(400).json({ error: 'Order details cannot be empty' });
+  }
+  const badLine = orderLines.find(
+    (line) =>
+      !line ||
+      !line.product_id ||
+      !line.supplier_id ||
+      !(Number(line.quantity) > 0) ||
+      Number.isNaN(parseFloat(line.price))
+  );
+  if (badLine) {
+    return res.status(400).json({
+      error: 'Each order line needs a product, supplier, quantity and price'
+    });
+  }
+
+  console.log('create new order', user_id);
+  let newOrder;
+  try {
+    // The order, its delivery record and its lines are written together so a
+    // failure part-way through cannot leave an order with no lines (which the
+    // purchase history would not show).
+    newOrder = await db.transaction(async (t) => {
+      const order = await Order.create(
+        { user_id, total_price, status, sent: 0 },
+        { transaction: t }
+      );
+      await OrderDelivery.create(
+        {
+          order_id: order.id,
+          first_name: firstName,
+          last_name: lastName,
+          delivery_address: deliveryAddress,
+          delivery_type: deliveryType,
+          contact,
+          remarks
+        },
+        { transaction: t }
+      );
+      await OrderDetail.bulkCreate(
+        orderLines.map((line) => ({
+          order_id: order.id,
+          product_id: line.product_id,
+          supplier_id: line.supplier_id,
+          quantity: line.quantity,
+          price: parseFloat(line.price),
+          status: line.status ?? status
+        })),
+        { transaction: t }
+      );
+      return order;
+    });
+  } catch (error) {
+    console.error('Order creation failed:', error);
+    return res.status(500).json({ error: 'Error creating order' });
+  }
+  console.log('new order id ', newOrder.id);
+
+  // Emails are best effort: the order is already saved.
+  const linesJson = JSON.stringify(orderLines);
+  try {
+    const userData = await User.findByPk(user_id);
+    Promise.resolve(
+      mailer.sendNewOrderMailTemplate(userData, newOrder, linesJson)
+    ).catch((e) => console.error('Order email to clinic failed:', e.message));
+
+    for (const x in supplier_list) {
+      const supplierData = await User.findByPk(supplier_list[x]);
+      Promise.resolve(
+        mailer.sendNewOrderMailVendor(supplierData, newOrder, linesJson)
+      ).catch((e) => console.error('Order email to vendor failed:', e.message));
+    }
+  } catch (e) {
+    console.error('Order email lookup failed:', e.message);
+  }
+
+  return res.json({ newOrder });
 });
 
 router.delete('/:oid', requireAdmin, async (req, res) => {

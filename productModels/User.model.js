@@ -129,13 +129,15 @@ User.init(
       unique: true,
       type: DataTypes.STRING
     },
+    // Optional: only set when the delivery address differs from the company
+    // address. Both columns are nullable in the database.
     deliveryAddress: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true
     },
     deliveryPostal: {
       type: DataTypes.INTEGER,
-      allowNull: false
+      allowNull: true
     },
   },
   { sequelize: db, modelName: 'user', underscored: true }

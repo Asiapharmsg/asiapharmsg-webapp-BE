@@ -14,6 +14,19 @@ const { sequelize } = require('../models');
 const { uploadPDFFile } = require('../aws/upload');
 const validPasswordRegex =
   /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+
+// Multipart forms post every field as a string, so an untouched optional
+// field arrives as '' (or 'null' when the client serialises a null). Nullable
+// columns must receive NULL instead: Postgres rejects '' for integers/dates.
+const blankToNull = (value) =>
+  value === undefined ||
+  value === null ||
+  value === '' ||
+  value === 'null' ||
+  value === 'undefined'
+    ? null
+    : value;
+
 const bodyValidations = {
   username: body('username')
     .trim()
@@ -167,9 +180,10 @@ const signup = async (req, res) => {
     if (!acra) {
       return res.status(500).send({ error: 'ACRA Image cannot be empty' });
     }
-    (data.companyPostal == typeof data.companyPostal) === 'string'
-      ? parseInt(data.companyPostal)
-      : data.companyPostal;
+    // The signup form always posts the delivery fields; they are blank unless
+    // the user ticked "My Delivery Address is Different".
+    const deliveryAddress = blankToNull(data.deliveryAddress);
+    const deliveryPostal = blankToNull(data.deliveryPostal);
     const userExists = await User.findOne({
       where: { [Op.or]: [{ email: data.email }, { username: data.username }] }
     });
@@ -180,10 +194,6 @@ const signup = async (req, res) => {
     }
     uploadPDFFile(acra);
 
-    if (data.deliveryPostal == '') {
-      console.log('postal deliver is null');
-      delete data.deliveryPostal;
-    }
     const hashPassword = await bcrypt.hash(data.password, 12);
     const newUser = await User.create({
       username: data.username,
@@ -203,8 +213,8 @@ const signup = async (req, res) => {
       companyPostal: data.companyPostal,
       countryIncorporation: data.countryIncorporation,
       isAdmin: false,
-      deliveryAddress: data.deliveryAddress,
-      deliveryPostal: data.deliveryPostal,
+      deliveryAddress,
+      deliveryPostal,
       lastLoginAt: new Date(),
       created_at: new Date(),
       updated_at: new Date()
@@ -493,13 +503,22 @@ const update = async (req, res) => {
     if (Object.keys(data).length > 0) {
       const file = req.file;
       const validations = [];
-      Object.keys(data).forEach((key) =>{
-        if(key != 'mobile' &&     key != 'licenceExpiryDate' &&
-        key != 'deliveryAddress' &&
-        key != 'deliveryPostal'){
+      const optionalFields = [
+        'mobile',
+        'licenceExpiryDate',
+        'deliveryAddress',
+        'deliveryPostal'
+      ];
+      Object.keys(data).forEach((key) => {
+        if (!optionalFields.includes(key) && bodyValidations[key]) {
           validations.push(bodyValidations[key]);
         }
       });
+      ['licenceExpiryDate', 'deliveryAddress', 'deliveryPostal'].forEach(
+        (key) => {
+          if (key in data) data[key] = blankToNull(data[key]);
+        }
+      );
       const isValid = await validate.run(req, res, validations);
       if (!isValid) {
         return;
