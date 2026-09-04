@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  GitHub Actions deploy access for the asiapharmsg-webapp repos. Creates the
+  GitHub OIDC identity provider and a role that the main-branch workflows of
+  the backend and frontend repos can assume to upload a release archive to S3
+  and run the deploy script on the EC2 host through SSM. No long-lived AWS
+  keys are stored in GitHub.
+
+  Deploy or update with:
+    aws cloudformation deploy --stack-name asiapharm-github-deploy \
+      --template-file deploy/github-oidc-role.yml --capabilities CAPABILITY_NAMED_IAM
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: Asiapharmsg
+  BackendRepo:
+    Type: String
+    Default: asiapharmsg-webapp-BE
+  FrontendRepo:
+    Type: String
+    Default: asiapharmsg-webapp-FE
+  Branch:
+    Type: String
+    Default: main
+    Description: Only workflows running on this branch may assume the role.
+  BucketName:
+    Type: String
+    Default: asiapharmsg-db-backups
+    Description: Bucket whose config/ prefix holds the release archives.
+  InstanceId:
+    Type: String
+    Default: i-093d28f858148abf7
+    Description: EC2 instance that runs the site.
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # GitHub's root CA thumbprints. AWS validates GitHub tokens against its
+      # own trust store since 2023, but the property is still required.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: asiapharm-github-deploy
+      Description: Assumed by GitHub Actions on the main branch of the asiapharmsg-webapp repos to deploy to EC2
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubOrg}/${BackendRepo}:ref:refs/heads/${Branch}
+                  - !Sub repo:${GitHubOrg}/${FrontendRepo}:ref:refs/heads/${Branch}
+      Policies:
+        - PolicyName: asiapharm-deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: UploadReleaseArchives
+                Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketName}/config/be.tar.gz
+                  - !Sub arn:aws:s3:::${BucketName}/config/fe.tar.gz
+              - Sid: RunDeployScriptOnHost
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}
+                  - !Sub arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript
+              - Sid: ReadDeployResult
+                Effect: Allow
+                Action:
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: Put this in the workflows' role-to-assume
+    Value: !GetAtt DeployRole.Arn
