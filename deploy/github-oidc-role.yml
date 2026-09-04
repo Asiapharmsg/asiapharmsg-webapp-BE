@@ -14,12 +14,23 @@ Parameters:
   GitHubOrg:
     Type: String
     Default: Asiapharmsg
+  GitHubOrgId:
+    Type: String
+    Default: '323427928'
+    Description: Numeric id of the GitHub owner (gh api users/<org> --jq .id).
   BackendRepo:
     Type: String
     Default: asiapharmsg-webapp-BE
+  BackendRepoId:
+    Type: String
+    Default: '1354372137'
+    Description: Numeric id of the backend repo (gh api repos/<org>/<repo> --jq .id).
   FrontendRepo:
     Type: String
     Default: asiapharmsg-webapp-FE
+  FrontendRepoId:
+    Type: String
+    Default: '1354371611'
   Branch:
     Type: String
     Default: main
@@ -62,10 +73,15 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              # GitHub issues the subject either as repo:<org>/<repo>:ref:...
+              # or, with immutable subjects, repo:<org>@<id>/<repo>@<id>:ref:...
+              # Both are accepted, each pinned to the exact names and ids.
               StringLike:
                 token.actions.githubusercontent.com:sub:
                   - !Sub repo:${GitHubOrg}/${BackendRepo}:ref:refs/heads/${Branch}
                   - !Sub repo:${GitHubOrg}/${FrontendRepo}:ref:refs/heads/${Branch}
+                  - !Sub repo:${GitHubOrg}@${GitHubOrgId}/${BackendRepo}@${BackendRepoId}:ref:refs/heads/${Branch}
+                  - !Sub repo:${GitHubOrg}@${GitHubOrgId}/${FrontendRepo}@${FrontendRepoId}:ref:refs/heads/${Branch}
       Policies:
         - PolicyName: asiapharm-deploy
           PolicyDocument:
