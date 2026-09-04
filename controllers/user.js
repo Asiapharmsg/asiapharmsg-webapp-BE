@@ -3,6 +3,8 @@ const DeletedRecord = require('../models').DeletedRecord;
 const PasswordReset = require('../models').PasswordReset;
 const Wishlist = require('../productModels/Wishlist.model');
 const Product = require('../productModels/Product.model');
+const Order = require('../productModels/Order.model');
+const OrderDetail = require('../productModels/OrderDetail.model');
 const Analytics = require('../models').Analytics;
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
@@ -78,6 +80,42 @@ const bodyValidations = {
     .optional({ nullable: true })
 };
 
+// True when the two accounts share an order: one placed it and the other
+// supplies at least one of its lines. Lets a vendor see the clinic behind an
+// order it fulfils (and a clinic see its vendor) without opening lookups to
+// everyone.
+const hasOrderRelationship = async (requesterId, targetId) => {
+  const pairs = [
+    [requesterId, targetId],
+    [targetId, requesterId]
+  ];
+  for (const [supplierId, clinicId] of pairs) {
+    const match = await Order.findOne({
+      where: { user_id: clinicId },
+      attributes: ['id'],
+      include: [
+        {
+          model: OrderDetail,
+          required: true,
+          attributes: [],
+          where: { supplier_id: supplierId }
+        }
+      ]
+    });
+    if (match) return true;
+  }
+  return false;
+};
+
+// Commercial terms between AsiaPharm and the account; not for trading partners.
+const PARTNER_HIDDEN_FIELDS = [
+  'billingType',
+  'priceTier',
+  'adminControl',
+  'isAdmin',
+  'lastLoginAt'
+];
+
 const getRanHex = (size) => {
   let result = [];
   let hexRef = [
@@ -134,8 +172,11 @@ const userDataWOimg = async (req, res) => {
     if (!userId) {
       return res.status(401).send({ error: 'Unauthorized request' });
     }
-    // Only admins may look up other accounts.
-    if (req.params.id && !req.isAdmin && String(req.params.id) !== String(req.userId)) {
+    // Other accounts: admins always; otherwise only a trading partner, i.e. a
+    // vendor viewing the clinic behind one of its orders or vice versa.
+    const isOther =
+      req.params.id && !req.isAdmin && String(req.params.id) !== String(req.userId);
+    if (isOther && !(await hasOrderRelationship(req.userId, req.params.id))) {
       return res.status(403).send({ error: 'Not allowed for this account' });
     }
     const userData = await User.findByPk(userId, { raw: true });
@@ -144,6 +185,9 @@ const userDataWOimg = async (req, res) => {
       delete userData.image_acra;
       delete userData.image_moh;
       delete userData.image_smc;
+      if (isOther) {
+        PARTNER_HIDDEN_FIELDS.forEach((key) => delete userData[key]);
+      }
 
       return res.status(200).send({ data: userData });
     } else {
