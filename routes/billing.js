@@ -20,7 +20,7 @@ router.get('/', requireAdmin, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -39,7 +39,7 @@ router.post('/', requireAdmin, async (req, res) => {
       return res.json({ error: true, message: 'Error creating billing' });
     }
   } catch (error) {
-    return res.json(error);
+    return res.status(500).json({ error: error.message || String(error) });
   }
 });
 
@@ -50,7 +50,7 @@ router.get('/supplier/:sid', selfOrAdmin('sid'), async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.log(err);
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -79,7 +79,7 @@ router.patch('/:bid', requireAdmin, async (req, res) => {
       });
     }
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 

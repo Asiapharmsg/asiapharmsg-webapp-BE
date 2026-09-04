@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -20,7 +20,7 @@ router.post('/', requireAdmin, async (req, res) => {
     res.sendStatus(200);
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -45,7 +45,7 @@ router.delete('/:cid', requireAdmin, async (req, res) => {
       });
     }
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 

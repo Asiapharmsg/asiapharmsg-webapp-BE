@@ -5,6 +5,21 @@ const Sequelize = require('sequelize');
 const { imageUpload, multiImageUpload } = require('../aws/upload');
 const { requireAdmin } = require('../utils/authenticator');
 
+const IMAGE_SLOTS = ['image', 'sub_image1', 'sub_image2'];
+
+// Maps uploaded files to product image columns. The form sends one
+// `image_slots` value per file naming its column; without them the files are
+// taken in order (primary, then the two secondary images).
+const imageColumns = (req) => {
+  const slots = [].concat(req.body.image_slots ?? []);
+  const columns = {};
+  (req.files || []).forEach((file, i) => {
+    const slot = slots[i] ?? IMAGE_SLOTS[i];
+    if (IMAGE_SLOTS.includes(slot)) columns[slot] = file.location;
+  });
+  return columns;
+};
+
 // Vendors may only change their own products; admins may change any.
 const ownerOrAdmin = async (req, res, next) => {
   try {
@@ -162,7 +177,7 @@ router.get('/', async (req, res) => {
     }
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -172,7 +187,7 @@ router.get('/single/:pid', async (req, res) => {
     let product = await Product.findOne({ where: { id: pid } });
     return res.json(product);
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -186,7 +201,7 @@ router.get('/supplier/:sid', async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.log(err);
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -196,7 +211,7 @@ router.get('/pending', requireAdmin, async (req, res) => {
     let product = await Product.findAll({ where: { status: 2 } });
     return res.json(product);
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -204,12 +219,12 @@ router.post('/', async (req, res) => {
   try {
     multiImageUpload(req, res, async (error) => {
       if (error) {
-        return res.json({ error: error });
+        return res.status(400).json({ error: error.message || String(error) });
       } else {
-        if (req.files === undefined) {
-          return res.json('Error: No File Selected');
+        const images = imageColumns(req);
+        if (!images.image) {
+          return res.status(400).json({ error: 'A product image is required' });
         } else {
-          const filesArray = req.files;
           if (!req.isAdmin) req.body.supplier_id = req.userId;
           // return res.json(filesArray);
           // const imageLocation = req.file.location;
@@ -236,9 +251,7 @@ router.post('/', async (req, res) => {
               ingredients: ingredients,
               category_id: category_id,
               supplier_id: supplier_id,
-              image: filesArray[0]?.location,
-              sub_image1: filesArray[1]?.location,
-              sub_image2: filesArray[2]?.location,
+              ...images,
               price_tier_1: price_tier_1,
               price_tier_2: price_tier_2,
               price_tier_3: price_tier_3,
@@ -253,13 +266,15 @@ router.post('/', async (req, res) => {
               success: true
             });
           } catch (err) {
-            return res.json({ error: err, success: true });
+            return res
+              .status(500)
+              .json({ error: err.message || String(err), success: false });
           }
         }
       }
     });
   } catch (error) {
-    return res.json(error);
+    return res.status(500).json({ error: error.message || String(error) });
   }
 });
 
@@ -267,6 +282,8 @@ router.patch('/:pid', ownerOrAdmin, async (req, res) => {
   const { pid } = req.params;
 
   multiImageUpload(req, res, async (error) => {
+    // A vendor's product stays that vendor's product.
+    if (!req.isAdmin) req.body.supplier_id = req.userId;
     const {
       name,
       description,
@@ -283,9 +300,9 @@ router.patch('/:pid', ownerOrAdmin, async (req, res) => {
       remarks
     } = req.body;
     if (error) {
-      return res.json({ error: error });
+      return res.status(400).json({ error: error.message || String(error) });
     } else {
-      if (req.files === undefined) {
+      if (!req.files || req.files.length === 0) {
         try {
           const updatedProduct = await Product.update(
             {
@@ -323,12 +340,11 @@ router.patch('/:pid', ownerOrAdmin, async (req, res) => {
             });
           }
         } catch (error) {
-          return res.json({ error });
+          return res
+            .status(500)
+            .json({ error: error.message || String(error) });
         }
       } else {
-        //const imageLocation = req.file.location;
-        const filesArray = req.files;
-
         try {
           const updatedProduct = await Product.update(
             {
@@ -344,10 +360,9 @@ router.patch('/:pid', ownerOrAdmin, async (req, res) => {
               expiry_date,
               inventory_count,
               status,
-              //image: imageLocation
-              image: filesArray[0]?.location,
-              sub_image1: filesArray[1]?.location,
-              sub_image2: filesArray[2]?.location
+              remarks,
+              // only the slots that received a new file are replaced
+              ...imageColumns(req)
             },
             {
               where: {
@@ -369,7 +384,7 @@ router.patch('/:pid', ownerOrAdmin, async (req, res) => {
             });
           }
         } catch (err) {
-          return res.json(err);
+          return res.status(500).json({ error: err.message || String(err) });
         }
       }
     }
@@ -397,7 +412,7 @@ router.delete('/:pid', ownerOrAdmin, async (req, res) => {
       });
     }
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 

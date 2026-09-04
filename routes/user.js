@@ -16,7 +16,7 @@ const cpUpload = upload.fields([
   { name: 'smc', maxCount: 1 },
   { name: 'acra', maxCount: 1 }
 ]);
-router.post('/signup/:token', cpUpload, verifyCaptcha('signup'), userController.signup);
+router.post('/signup/:token', verifyCaptcha('signup'), cpUpload, userController.signup);
 //signle imag sign up
 /*
 router.post(

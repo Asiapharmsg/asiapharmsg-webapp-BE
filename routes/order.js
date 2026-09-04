@@ -10,6 +10,7 @@ const { body } = require('express-validator');
 const User = require('../productModels/User.model');
 const db = require('../database/connection');
 const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
+const { canSeeOrder } = require('../utils/orderAccess');
 
 router.get('/', requireAdmin, async (req, res) => {
   try {
@@ -26,7 +27,7 @@ router.get('/', requireAdmin, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -199,7 +200,7 @@ router.delete('/:oid', requireAdmin, async (req, res) => {
       });
     }
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -214,7 +215,7 @@ router.get('/supplier/:sid', selfOrAdmin('sid'), async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.log(err);
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -228,20 +229,23 @@ router.get('/user/:uid', selfOrAdmin('uid'), async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.log(err);
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
 router.get('/orderdelivery/:oid', async (req, res) => {
   const { oid } = req.params;
   try {
+    if (!(await canSeeOrder(req, oid))) {
+      return res.status(403).json({ error: 'Not allowed for this order' });
+    }
     let rows = await OrderDelivery.findOne({
       where: { order_id: oid }
     });
     return res.json(rows);
   } catch (err) {
     console.log(err);
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -289,7 +293,7 @@ router.patch('/:oid', requireAdmin, async (req, res) => {
       });
     }
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 

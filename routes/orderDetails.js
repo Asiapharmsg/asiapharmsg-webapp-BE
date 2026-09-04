@@ -9,6 +9,10 @@ const mailer = require('../utils/mailer');
 const oldUser = require('../models').User;
 const helpers = require('../utils/helpers');
 const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
+const { canSeeOrder } = require('../utils/orderAccess');
+
+// approved, pending, rejected, partially fulfilled
+const ORDER_LINE_STATUSES = [1, 2, 3, 5];
 
 router.get('/', requireAdmin, async (req, res) => {
   try {
@@ -16,7 +20,7 @@ router.get('/', requireAdmin, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -50,7 +54,7 @@ router.get('/supplier/:sId', selfOrAdmin('sId'), async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
@@ -88,7 +92,7 @@ router.get('/user/:uid', selfOrAdmin('uid'), async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   const { product_id, order_id, quantity, price, supplier_id, status } =
     req.body;
   console.log('here', req.body);
@@ -116,6 +120,9 @@ router.post('/', async (req, res) => {
 router.get('/order/:oid', async (req, res) => {
   const { oid } = req.params;
   try {
+    if (!(await canSeeOrder(req, oid))) {
+      return res.status(403).json({ error: 'Not allowed for this order' });
+    }
     let rows = await OrderDetail.findAll({
       where: { order_id: oid },
       include: [
@@ -134,12 +141,16 @@ router.get('/order/:oid', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.log(err);
-    res.json(err);
+    res.status(500).json({ error: err.message || String(err) });
   }
 });
 
 router.patch('/:odid', async (req, res) => {
-  const { status, item_price, supplier_id, clinic_email, remarks } = req.body;
+  const { remarks } = req.body;
+  const status = Number(req.body.status);
+  if (!ORDER_LINE_STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'Invalid order line status' });
+  }
 
   try {
     const { odid } = req.params;
@@ -148,6 +159,7 @@ router.patch('/:odid', async (req, res) => {
     if (!req.isAdmin && String(orderDetail.supplier_id) !== String(req.userId)) {
       return res.status(403).json({ error: 'Not your order line' });
     }
+    const wasApproved = Number(orderDetail.status) === 1;
     const order_id = orderDetail.order_id;
     const order_obj = await Order.findByPk(order_id);
     const clinic = await User.findByPk(order_obj.user_id);
@@ -206,7 +218,7 @@ router.patch('/:odid', async (req, res) => {
           mailer.sendRejectOrderMail(clinic, order_obj);
         }
       } catch (err) {
-        return res.json(err);
+        return res.status(500).json({ error: err.message || String(err) });
       }
     } else {
       // console.log("else");
@@ -219,7 +231,7 @@ router.patch('/:odid', async (req, res) => {
           mailer.sendApproveOrderMail(clinic, order_obj);
         }
       } catch (err) {
-        return res.json(err);
+        return res.status(500).json({ error: err.message || String(err) });
       }
 
       console.log('Update here....');
@@ -233,26 +245,22 @@ router.patch('/:odid', async (req, res) => {
       );
     }
 
-    //order details status = 1 (Active) - create billing
-    if (status == 1) {
-      console.log('Status is Approved.');
-      //generate billing price
-      var billing_price = item_price * 0.05;
-      var order_detail_id = odid;
-      console.log(billing_price);
-
-      const newBilling = await Billing.create({
-        order_detail_id,
-        supplier_id,
-        billing_price,
-        status
+    // A line bills the 5% commission once, when it first becomes approved.
+    // Price and supplier come from the stored line, never from the request.
+    if (status === 1 && !wasApproved) {
+      const existing = await Billing.findOne({
+        where: { order_detail_id: odid }
       });
-      console.log(newBilling);
-      console.log('New Billing Record created.');
-
-      //send email to user
-      //mailer.sendApproveOrderMail(clinic_email, order_id, odid);
-    } else if (status == 3) {
+      if (!existing) {
+        await Billing.create({
+          order_detail_id: odid,
+          supplier_id: orderDetail.supplier_id,
+          billing_price: Number(orderDetail.price) * 0.05,
+          status: 1
+        });
+        console.log('Billing record created for order line', odid);
+      }
+    } else if (status === 3) {
       //mailer.sendRejectOrderMail(clinic_email, order_id, odid);
     }
 
@@ -269,7 +277,7 @@ router.patch('/:odid', async (req, res) => {
       });
     }
   } catch (err) {
-    return res.json(err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 });
 
