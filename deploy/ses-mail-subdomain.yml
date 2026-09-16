@@ -89,11 +89,19 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
+          # Resource has to be a wildcard because in sandbox mode SES also
+          # authorizes against each recipient identity, which we cannot know in
+          # advance. The condition is what constrains this: the instance can
+          # only ever send as no-reply on the mail subdomain, never as the
+          # parent domain or anything else.
           - Effect: Allow
             Action:
               - ses:SendEmail
               - ses:SendRawEmail
-            Resource: !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${MailSubdomain}'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ses:FromAddress: !Sub 'no-reply@${MailSubdomain}'
 
 Outputs:
   MailIdentityName:
