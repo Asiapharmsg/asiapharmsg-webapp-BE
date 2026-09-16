@@ -402,17 +402,26 @@ const forgetpassword = async (req, res) => {
       const hashPassword = await bcrypt.hash(tempPass, 12);
       var dt = new Date();
 
-      // generate a temp password
+      // Mail first. If it cannot be delivered the account keeps the password it
+      // already had, otherwise a failed send locks the user out with a
+      // temporary password nobody ever receives.
+      try {
+        await mailer.sendTempPasswordMail(userExists.email, tempPass);
+      } catch (mailErr) {
+        console.error('forgetpassword mail failed:', mailErr);
+        return res.status(500).send({
+          error: 'Could not send the reset email. Your password is unchanged.'
+        });
+      }
+
       const updatedUser = await User.update(
-        { password: hashPassword, updatedAt: new Date().now },
+        { password: hashPassword, updatedAt: new Date() },
         {
           where: {
             id: userExists.id
           }
         }
       );
-
-      mailer.sendTempPasswordMail(userExists.email, tempPass);
 
       // create a new record in Password reset table
       /*

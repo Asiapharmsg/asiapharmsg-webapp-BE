@@ -93,13 +93,11 @@ const sendTempPasswordMail = async (email, password) => {
     Please reset your password immediately after logging in with the temporary password.</p>
     <p><b>Your Temporary Password : </b> </p><p>${password}</p>`
   };
-  transporter.sendMail(mailOptionsForReset, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  // Throws on failure on purpose: the caller must not change the stored
+  // password unless the temporary one actually reached the user.
+  const info = await transporter.sendMail(mailOptionsForReset);
+  console.log('Temp password email sent: ' + info.messageId);
+  return info;
 };
 
 //Send Email when account is active
