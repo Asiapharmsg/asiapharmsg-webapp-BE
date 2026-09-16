@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  SES sending identity on a dedicated mail subdomain. Every record this stack
+  creates sits under the subdomain, so the parent domain MX, SPF and
+  autodiscover records that point at Microsoft 365 are left untouched.
+
+Parameters:
+  HostedZoneId:
+    Type: String
+    Default: Z038144033SO4HCTM8ISY
+    Description: Public hosted zone for asiapharmsg.com.
+  MailSubdomain:
+    Type: String
+    Default: mail.asiapharmsg.com
+    Description: Subdomain that SES sends as. Never the parent domain.
+  AppRoleName:
+    Type: String
+    Default: asiapharmsg-ec2-s3-read
+    Description: Role on the application instance that needs to send mail.
+
+Resources:
+  MailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref MailSubdomain
+      DkimAttributes:
+        SigningEnabled: true
+
+  DkimRecord1:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !GetAtt MailIdentity.DkimDNSTokenName1
+      Type: CNAME
+      TTL: '1800'
+      ResourceRecords:
+        - !GetAtt MailIdentity.DkimDNSTokenValue1
+
+  DkimRecord2:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !GetAtt MailIdentity.DkimDNSTokenName2
+      Type: CNAME
+      TTL: '1800'
+      ResourceRecords:
+        - !GetAtt MailIdentity.DkimDNSTokenValue2
+
+  DkimRecord3:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !GetAtt MailIdentity.DkimDNSTokenName3
+      Type: CNAME
+      TTL: '1800'
+      ResourceRecords:
+        - !GetAtt MailIdentity.DkimDNSTokenValue3
+
+  # SPF for the subdomain only. The parent keeps its Microsoft 365 record.
+  SpfRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub '${MailSubdomain}.'
+      Type: TXT
+      TTL: '1800'
+      ResourceRecords:
+        - '"v=spf1 include:amazonses.com -all"'
+
+  DmarcRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub '_dmarc.${MailSubdomain}.'
+      Type: TXT
+      TTL: '1800'
+      ResourceRecords:
+        - '"v=DMARC1; p=none;"'
+
+  # The instance sends through the SES API using its own role, so there is no
+  # SMTP password to store, rotate or leak. Scoped to this identity alone.
+  SesSendPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: asiapharmsg-ses-send
+      Description: Allows the application instance to send mail as the mail subdomain.
+      Roles:
+        - !Ref AppRoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${MailSubdomain}'
+
+Outputs:
+  MailIdentityName:
+    Description: SES identity created by this stack.
+    Value: !Ref MailIdentity
+  SenderAddress:
+    Description: Address the application should send as.
+    Value: !Sub 'no-reply@${MailSubdomain}'

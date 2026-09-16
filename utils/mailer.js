@@ -1,12 +1,16 @@
 var nodemailer = require('nodemailer');
+const aws = require('aws-sdk');
 const OrderDetail = require('./../productModels/OrderDetail.model');
 const Product = require('./../productModels/Product.model');
 const moment = require('moment');
 const path = require('path');
 
-// Sender must be an address the SMTP account is allowed to send as (SPF).
+// Sender must be an address on the SES identity we own (mail.asiapharmsg.com).
+// The parent domain still belongs to Microsoft 365 and is never sent as.
 const MAIL_FROM =
-  process.env.EMAIL_FROM || `"AsiaPharm SG Admin" <${process.env.EMAIL_ADDR}>`;
+  process.env.EMAIL_FROM || '"AsiaPharm SG Admin" <no-reply@mail.asiapharmsg.com>';
+// no-reply is not a real mailbox, so replies go to a person instead.
+const MAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || 'melcia@asiapharmsg.com';
 /*
 const {google } = require('googleapis');
 
@@ -27,18 +31,21 @@ var transporter = nodemailer.createTransport({
   }
 });*/
 
-var transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_ADDR,
-    pass: process.env.EMAIL_PWD
+// SES through the instance role: there is no SMTP user or password to store,
+// rotate or leak. Credentials come from the EC2 instance profile at runtime.
+var transporter = nodemailer.createTransport(
+  {
+    SES: new aws.SES({
+      apiVersion: '2010-12-01',
+      region:
+        process.env.SES_REGION || process.env.AWS_REGION || 'ap-southeast-1'
+    })
   },
-  tls: {
-    rejectUnauthorized: false
+  {
+    from: MAIL_FROM,
+    replyTo: MAIL_REPLY_TO
   }
-});
+);
 
 const sendMail = async (email) => {
   const mailOptions = {
