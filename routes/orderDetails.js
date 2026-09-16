@@ -11,8 +11,10 @@ const helpers = require('../utils/helpers');
 const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
 const { canSeeOrder } = require('../utils/orderAccess');
 
-// approved, pending, rejected, partially fulfilled
-const ORDER_LINE_STATUSES = [1, 2, 3, 5];
+// approved, pending, rejected, partially fulfilled, cancelled
+const ORDER_LINE_STATUSES = [1, 2, 3, 5, 6];
+// Cancelling overrides whatever the vendor decided, so only an admin may do it.
+const CANCELLED = 6;
 
 router.get('/', requireAdmin, async (req, res) => {
   try {
@@ -151,6 +153,11 @@ router.patch('/:odid', async (req, res) => {
   if (!ORDER_LINE_STATUSES.includes(status)) {
     return res.status(400).json({ error: 'Invalid order line status' });
   }
+  if (status === CANCELLED && !req.isAdmin) {
+    return res
+      .status(403)
+      .json({ error: 'Only an admin can cancel an order line' });
+  }
 
   try {
     const { odid } = req.params;
@@ -188,7 +195,15 @@ router.patch('/:odid', async (req, res) => {
 
     console.log(sArray);
 
-    if (sArray.includes(2) || sArray.includes(5)) {
+    const numericStatuses = sArray.map(Number);
+
+    if (numericStatuses.every((s) => s === CANCELLED)) {
+      // Every line cancelled: neither the approval nor the rejection mail applies.
+      await Order.update({ status: CANCELLED }, { where: { id: order_id } });
+    } else if (numericStatuses.includes(CANCELLED)) {
+      // Some lines are still live, so the order as a whole is partially fulfilled.
+      await Order.update({ status: 5 }, { where: { id: order_id } });
+    } else if (sArray.includes(2) || sArray.includes(5)) {
       // if any of the order detail is pending or partially fulfilled
       const status1 = helpers.getCompleteOrderStatus(sArray);
 
@@ -247,6 +262,8 @@ router.patch('/:odid', async (req, res) => {
 
     // A line bills the 5% commission once, when it first becomes approved.
     // Price and supplier come from the stored line, never from the request.
+    // Cancelling deliberately leaves an existing billing row alone: the client
+    // reverses those manually outside the system.
     if (status === 1 && !wasApproved) {
       const existing = await Billing.findOne({
         where: { order_detail_id: odid }
