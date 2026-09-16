@@ -28,7 +28,6 @@ router.post(
 
 router.post('/login/:token', verifyCaptcha('login'), userController.login);
 router.post('/forgetpassword', userController.forgetpassword);
-//router.post("/resetpassword", userController.resetpassword);
 
 router.put(
   '/update',

@@ -47,6 +47,22 @@ var transporter = nodemailer.createTransport(
   }
 );
 
+// Notification mail must never fail the action that triggered it, but a
+// failure has to be visible. Every failure logs one greppable line rather
+// than disappearing into a bare console.log, and the caller gets a boolean.
+const deliver = async (label, mailOptions) => {
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`MAIL OK [${label}] -> ${mailOptions.to} (${info.messageId})`);
+    return true;
+  } catch (err) {
+    console.error(
+      `MAIL FAILURE [${label}] -> ${mailOptions.to}: ${err.message}`
+    );
+    return false;
+  }
+};
+
 const sendMail = async (email) => {
   const mailOptions = {
     from: MAIL_FROM,
@@ -55,13 +71,7 @@ const sendMail = async (email) => {
     text: 'That was easy! Our team is currently reviewing your application. Thank you!'
   };
 
-  transporter.sendMail(mailOptions, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('signup-pending', mailOptions);
 };
 
 const sendResetMail = async (user, hasedResetString, redirectUrl) => {
@@ -75,13 +85,7 @@ const sendResetMail = async (user, hasedResetString, redirectUrl) => {
     }>
     here</a> to proceed. </p>`
   };
-  transporter.sendMail(mailOptionsForReset, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('password-reset-link', mailOptionsForReset);
 };
 
 const sendTempPasswordMail = async (email, password) => {
@@ -108,13 +112,7 @@ const sendAccountUpdateSuccessMail = async (email) => {
     subject: 'Your Account Registration is successful',
     html: `<p>Your Account has been activated.</p>`
   };
-  transporter.sendMail(mailOptionsForUpdateSuccess, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('account-approved', mailOptionsForUpdateSuccess);
 };
 
 //Send Email when account is rejected
@@ -125,13 +123,7 @@ const sendAccountUpdateUnsuccessMail = async (email) => {
     subject: 'Your Account Registration is unsuccessful',
     html: `<p>We regret to inform you that your application has been rejected. Please contact our admin for verification. </p>`
   };
-  transporter.sendMail(mailOptionsForUpdateUnsuccess, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('account-rejected', mailOptionsForUpdateUnsuccess);
 };
 
 //Send Email when order is created
@@ -142,13 +134,7 @@ const sendNewOrderMail = async (email) => {
     subject: 'An order has been created',
     html: `<p>The order has been created and is in pending status. Please check your account to view the order. </p>`
   };
-  transporter.sendMail(mailOptionsForNewOrder, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('order-created', mailOptionsForNewOrder);
 };
 
 //Send Email when order is approve
@@ -190,13 +176,7 @@ const sendApproveOrderMail = async (user, order) => {
     subject: `Your order [${order_id}] has been approved`,
     html: message
   };
-  transporter.sendMail(mailOptionsForRejectOrder, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('order-approved', mailOptionsForRejectOrder);
 };
 
 //Send Email when order is rejected
@@ -237,13 +217,7 @@ const sendRejectOrderMail = async (user, order) => {
     subject: `Your order [${order_id}] has at least one order item been rejected`,
     html: message
   };
-  transporter.sendMail(mailOptionsForRejectOrder, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('order-rejected', mailOptionsForRejectOrder);
 };
 
 // sending email with table for user
@@ -345,13 +319,7 @@ const sendNewOrderMailTemplate = async (user, newOrder, orderDetails_list) => {
     ],
     html: message
   };
-  transporter.sendMail(mailOptionsForNewOrder, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('order-placed-clinic', mailOptionsForNewOrder);
 };
 
 // sending email with table for vendor
@@ -450,13 +418,7 @@ const sendNewOrderMailVendor = async (vendor, newOrder, orderDetails_list) => {
     subject: `You got an order[${order_id}]`,
     html: message
   };
-  transporter.sendMail(mailOptionsForNewOrder, function (error, info) {
-    if (error) {
-      console.log(error);
-    } else {
-      console.log('Email sent: ' + info.response);
-    }
-  });
+  return deliver('order-placed-vendor', mailOptionsForNewOrder);
 };
 
 module.exports = {
