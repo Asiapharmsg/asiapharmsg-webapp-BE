@@ -12,6 +12,9 @@ const db = require('../database/connection');
 const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
 const { canSeeOrder } = require('../utils/orderAccess');
 
+// Cancelling is an order-level admin action, never a per-line one.
+const CANCELLED = 6;
+
 router.get('/', requireAdmin, async (req, res) => {
   try {
     let rows = await Order.findAll({
@@ -245,6 +248,45 @@ router.get('/orderdelivery/:oid', async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.log(err);
+    return res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
+// The order and every one of its lines move to Cancelled together, in one
+// transaction, so an order can never be left half cancelled. Existing billing
+// rows are deliberately left alone; the client reverses those manually.
+router.patch('/:oid/cancel', requireAdmin, async (req, res) => {
+  const { oid } = req.params;
+  try {
+    const order = await Order.findByPk(oid);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (Number(order.status) === CANCELLED) {
+      return res.json({
+        message: 'Order is already cancelled!',
+        orderId: Number(oid),
+        success: true
+      });
+    }
+
+    await db.transaction(async (t) => {
+      await OrderDetail.update(
+        { status: CANCELLED },
+        { where: { order_id: oid }, transaction: t }
+      );
+      await Order.update(
+        { status: CANCELLED },
+        { where: { id: oid }, transaction: t }
+      );
+    });
+
+    return res.json({
+      message: 'Order cancelled successfully!',
+      orderId: Number(oid),
+      success: true
+    });
+  } catch (err) {
     return res.status(500).json({ error: err.message || String(err) });
   }
 });

@@ -11,9 +11,10 @@ const helpers = require('../utils/helpers');
 const { requireAdmin, selfOrAdmin } = require('../utils/authenticator');
 const { canSeeOrder } = require('../utils/orderAccess');
 
-// approved, pending, rejected, partially fulfilled, cancelled
-const ORDER_LINE_STATUSES = [1, 2, 3, 5, 6];
-// Cancelling overrides whatever the vendor decided, so only an admin may do it.
+// approved, pending, rejected, partially fulfilled
+// Cancelled (6) is missing on purpose: it is set only by the order-level
+// cancel route, never one line at a time.
+const ORDER_LINE_STATUSES = [1, 2, 3, 5];
 const CANCELLED = 6;
 
 router.get('/', requireAdmin, async (req, res) => {
@@ -153,18 +154,18 @@ router.patch('/:odid', async (req, res) => {
   if (!ORDER_LINE_STATUSES.includes(status)) {
     return res.status(400).json({ error: 'Invalid order line status' });
   }
-  if (status === CANCELLED && !req.isAdmin) {
-    return res
-      .status(403)
-      .json({ error: 'Only an admin can cancel an order line' });
-  }
-
   try {
     const { odid } = req.params;
     const orderDetail = await OrderDetail.findByPk(odid);
     if (!orderDetail) return res.status(404).json({ error: 'Order line not found' });
     if (!req.isAdmin && String(orderDetail.supplier_id) !== String(req.userId)) {
       return res.status(403).json({ error: 'Not your order line' });
+    }
+    // A cancelled order is final for vendors; only an admin can reopen a line.
+    if (Number(orderDetail.status) === CANCELLED && !req.isAdmin) {
+      return res
+        .status(403)
+        .json({ error: 'This order has been cancelled' });
     }
     const wasApproved = Number(orderDetail.status) === 1;
     const order_id = orderDetail.order_id;
