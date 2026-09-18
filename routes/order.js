@@ -14,6 +14,10 @@ const { canSeeOrder } = require('../utils/orderAccess');
 
 // Cancelling is an order-level admin action, never a per-line one.
 const CANCELLED = 6;
+// Marking an order partially fulfilled is a header-only admin action: the
+// lines keep their own statuses, because it is the mix of line statuses that
+// makes an order partial in the first place.
+const PARTIALLY_FULFILLED = 5;
 
 router.get('/', requireAdmin, async (req, res) => {
   try {
@@ -283,6 +287,47 @@ router.patch('/:oid/cancel', requireAdmin, async (req, res) => {
 
     return res.json({
       message: 'Order cancelled successfully!',
+      orderId: Number(oid),
+      success: true
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || String(err) });
+  }
+});
+
+// Marking an order partially fulfilled moves the order header only. The lines
+// are left exactly as they are, and no billing row is touched; the client
+// reverses billing manually, the same as for a cancellation.
+// NOTE: this is a one-shot override, not a lock. The next time a vendor edits
+// a line, the recompute in routes/orderDetails.js reassesses the header from
+// its lines and may move it off 5 again.
+router.patch('/:oid/partial', requireAdmin, async (req, res) => {
+  const { oid } = req.params;
+  try {
+    const order = await Order.findByPk(oid);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (Number(order.status) === CANCELLED) {
+      return res.status(409).json({
+        error: 'A cancelled order cannot be marked partially fulfilled'
+      });
+    }
+    if (Number(order.status) === PARTIALLY_FULFILLED) {
+      return res.json({
+        message: 'Order is already partially fulfilled!',
+        orderId: Number(oid),
+        success: true
+      });
+    }
+
+    await Order.update(
+      { status: PARTIALLY_FULFILLED },
+      { where: { id: oid } }
+    );
+
+    return res.json({
+      message: 'Order marked partially fulfilled!',
       orderId: Number(oid),
       success: true
     });
